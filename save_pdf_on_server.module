@@ -1,0 +1,150 @@
+<?php
+
+function save_pdf_on_server_init() {
+	$path_val=request_path();
+	$exploded_val=explode("/",$path_val);
+	$check_val=$exploded_val[0].'/';
+
+
+	if($check_val=='journaler/') { 
+		$path_value=$_GET['field_journal_datetime_value']; 
+		$min_date='';
+		$max_date='';
+		$min_date=$path_value['min']['date'];
+		$max_date=$path_value['max']['date'];
+
+		if(!empty($max_date)){ 
+			$max_date=$max_date.'  23:59:59';
+		}
+
+		if(!empty($min_date)){
+			$from_date=$min_date;
+		}else{
+			$from_date = date('Y-m-d', strtotime('-31 days'));
+		}
+
+		if(!empty($max_date)){
+			$to_date=$max_date;
+		}else{
+			$to_date=date('Y-m-d');
+			$to_date=$to_date.'  23:59:59';
+		}
+
+		$result = db_query("SELECT e.entityform_id,ttd.name,fjdate.field_journal_datetime_value,fjc.field_journal_content_value FROM {entityform} e 
+			INNER JOIN {field_data_field_koll_include_yes_no kiyn} ON kiyn.entity_id=e.entityform_id 
+			WHERE e.type='journal' and field_koll_include_yes_no_value=1 and unix_timestamp(fjdate.field_journal_datetime_value) >=unix_timestamp('".$from_date."') and unix_timestamp(fjdate.field_journal_datetime_value) <=unix_timestamp('".$to_date."') ORDER BY ttd.name DESC,fjdate.field_journal_datetime_value ASC");
+		$output_result='';
+		$final_result='';
+		$previous_item_name='';
+		foreach($result as $item) {
+
+			if($previous_item_name!=$item->name){
+				$output_result='@@'.$item->name.'@'; 
+				$previous_item_name=$item->name;
+			}else{
+				$output_result='@';
+				$previous_item_name='';
+			}
+
+			$output_result=$output_result.$item->field_journal_datetime_value.' '.$item->field_journal_content_value.'@';
+			$output_result=$output_result.'@'; 
+			$final_result=$final_result.$output_result;
+
+
+			$final_result=str_replace('</p>', ' ', $final_result);
+			setcookie("journal_results", $final_result, time()+3600); 
+
+			drupal_add_js('jQuery(document).ready(function () { 
+
+				var journal_res=$.cookie("journal_results");
+				var journal_res_one=journal_res.replace(/\@/g, "\n");
+				var journal_res_two =journal_res_one.replace(/\<p>/g, "\n");
+				var now = new Date();
+				var month = now.getMonth()+1;
+				var day = now.getDate();
+
+				if(month<10){
+					month="0"+month;
+				}
+
+				if(day<10){
+					day="0"+day;
+				}
+
+				var current_date= now.getFullYear()+""+month+""+day;
+
+				$("#field-date-for-report-title-add-more-wrapper input").val(current_date);
+				$("#field-journal-summary-results-add-more-wrapper input").val(journal_res_two);
+
+
+			});',
+			array('type' => 'inline', 'scope' => 'footer', 'weight' => 5)
+		);
+
+		}
+	}
+
+}
+
+
+/**
+ * Declare what blocks are provided by this module.
+ * Implements hook_block_info().
+ */
+function save_pdf_on_server_block_info(){
+	$block['save_pdf_on_server'] = array(
+		'info' => t('Save pdf on server'),
+		'pages' => "eform/*",
+		'visibility' => 1,
+		'cache' => DRUPAL_NO_CACHE,
+	);
+	return $block;
+}
+
+/**
+ * Define what our block is going to look like.
+ * Implements hook_block_view().
+ */
+function save_pdf_on_server_block_view($block_key){
+	$block = array();
+    if($block_key == 'save_pdf_on_server'){ //We only want to define the content of OUR block
+        //This is the title of the block.
+    	$block['subject'] = t('Summary Pdfs');
+
+        //Define the block content.
+    	$block['content'] = t('Summary Pdfs');
+    	$block['content'] = process_my_things_one();
+    }
+    return $block;
+}
+
+
+function process_my_things_one() {
+	$output = '';
+	$result = db_query('SELECT e.created,rt.entity_id,rt.field_report_title_value,rd.field_date_for_report_title_value FROM {entityform} e 
+		INNER JOIN {field_data_field_report_title} rt ON e.entityform_id=rt.entity_id 
+		INNER JOIN {field_data_field_date_for_report_title} rd ON e.entityform_id=rd.entity_id
+		ORDER BY e.created DESC');
+	$result_array=array();
+	$k=0;
+	foreach($result as $item) {
+		$result_array[$k]['title_name']= $item->field_report_title_value;
+		$result_array[$k]['title_date']= $item->field_date_for_report_title_value;
+		$result_array[$k]['created']= date('Y/m/d H:i:s', $item->created);
+		$result_array[$k]['entity_id']= $item->entity_id;
+		$k++;
+	}
+	$count = count($result_array);
+	$server_name=$_SERVER['HTTP_HOST'];
+	if($server_name=='koll-vo.se'){
+		$server_redirect_path='default';
+	}else{
+		$server_redirect_path=$server_name;
+	}
+	foreach ($result_array as $val) {
+		$output .="<a href='../sites/$server_redirect_path/files/save_pdf_on_server/$val[title_name]_$val[title_date].pdf' target='_blank'>PDF Rapport-$val[title_name]-$val[title_date]</a>";
+		$output .='<br>';
+	}
+	return $output;
+}
+?>

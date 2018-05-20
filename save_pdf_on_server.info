@@ -1,0 +1,11 @@
+name = Save Pdf on Server
+description = This module will generate the pdf for entityforms and the generated pdf will be stored on server directory. 
+core = 7.x
+package = Custom module 
+
+files[] = save_pdf_on_server.views_default.inc
+files[] = save_pdf_on_server.rules_defaults.inc
+
+version = "7.x.1"
+core = "7.x"
+project = "Custom Save Pdf on Server"
